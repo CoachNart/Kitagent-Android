@@ -5,7 +5,6 @@ import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
 import android.view.Gravity
-import android.view.View
 import android.widget.LinearLayout
 import android.widget.TextView
 
@@ -14,7 +13,6 @@ class MainActivity : Activity() {
     private lateinit var nav: LinearLayout
     private val cyan = Color.rgb(78, 226, 255)
     private val bg = Color.rgb(7, 9, 12)
-    private val panel = Color.rgb(13, 20, 25)
     private val text = Color.rgb(245, 247, 250)
     private val muted = Color.rgb(143, 155, 168)
 
@@ -34,13 +32,11 @@ class MainActivity : Activity() {
             setBackgroundColor(bg)
             setPadding(18, 18, 18, 8)
         }
-
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
         }
         root.addView(content)
-
         nav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
@@ -61,7 +57,6 @@ class MainActivity : Activity() {
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(if (index == 0) cyan else muted)
                 setPadding(4, 8, 4, 8)
-                isAllCaps = false
                 setOnClickListener { showSection(index) }
             }
             nav.addView(item, LinearLayout.LayoutParams(0, -1, 1f))
@@ -70,20 +65,19 @@ class MainActivity : Activity() {
 
     private fun showSection(index: Int) {
         content.removeAllViews()
-        val title = sections[index]
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(4, 10, 4, 18)
         }
         val eyebrow = TextView(this).apply {
-            text = "KITAGENT"
+            text = "KITSETUPS"
             textSize = 11f
             letterSpacing = 0.16f
             setTextColor(cyan)
         }
         header.addView(eyebrow)
         val heading = TextView(this).apply {
-            text = title
+            text = sections[index]
             textSize = 30f
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(text)
@@ -91,7 +85,6 @@ class MainActivity : Activity() {
         }
         header.addView(heading)
         content.addView(header)
-
         when (index) {
             0 -> home()
             1 -> market()
@@ -116,7 +109,7 @@ class MainActivity : Activity() {
     }
 
     private fun market() {
-        addPanel("Market overview", "BTC / ETH / SOL\nLive market data will populate this native terminal.")
+        addPanel("Market overview", "BTC / ETH / SOL\nLive market data will populate this terminal.")
         addPanel("Analysis", "Market structure, levels, trend context and setup analysis.")
     }
 
