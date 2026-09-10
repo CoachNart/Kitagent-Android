@@ -1,14 +1,13 @@
 package com.kitagent.android
 
+import android.app.Activity
 import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
-import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.statusBarColor = Color.rgb(7, 9, 12)
