@@ -1,26 +1,46 @@
 package com.kitagent.android
 
-import android.animation.ObjectAnimator
+import android.annotation.SuppressLint
 import android.app.Activity
+import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Typeface
+import android.graphics.Paint
+import android.graphics.Path
 import android.os.Bundle
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
-import android.view.animation.DecelerateInterpolator
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
+import android.webkit.WebView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.Locale
 
 class MainActivity : Activity() {
     private lateinit var content: LinearLayout
     private lateinit var nav: LinearLayout
-
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val cyan = Color.rgb(78, 226, 255)
     private val bg = Color.rgb(7, 9, 12)
-    private val text = Color.rgb(245, 247, 250)
+    private val panelColor = Color.rgb(13, 20, 25)
+    private val textColor = Color.rgb(245, 247, 250)
     private val muted = Color.rgb(143, 155, 168)
+    private val green = Color.rgb(65, 224, 157)
     private val sections = listOf("Home", "Market Analysis", "Chart Terminal", "CEX", "History", "Profile")
+    private var active = 0
+    private var btc = 104820.0
+    private var eth = 3800.0
+    private var sol = 241.0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -28,214 +48,128 @@ class MainActivity : Activity() {
         window.navigationBarColor = bg
         buildShell()
         showSection(0)
+        refreshMarket()
     }
 
+    override fun onDestroy() { scope.cancel(); super.onDestroy() }
+
     private fun buildShell() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(bg)
-            setPadding(18, 10, 18, 0)
-        }
-        val scroll = ScrollView(this).apply {
-            isFillViewport = true
-            layoutParams = LinearLayout.LayoutParams(-1, 0, 1f)
-        }
-        content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, 0, 0, 22)
-        }
-        scroll.addView(content)
-        root.addView(scroll)
-        nav = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, 5, 0, 4)
-            setBackgroundColor(bg)
-        }
-        root.addView(nav, LinearLayout.LayoutParams(-1, 66))
-        setContentView(root)
-        rebuildNav()
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(bg); setPadding(16, 6, 16, 0) }
+        val scroll = ScrollView(this).apply { isFillViewport = true; layoutParams = LinearLayout.LayoutParams(-1, 0, 1f) }
+        content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 0, 0, 22) }
+        scroll.addView(content); root.addView(scroll)
+        nav = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER; setPadding(0, 3, 0, 4); setBackgroundColor(bg) }
+        root.addView(nav, LinearLayout.LayoutParams(-1, 68)); setContentView(root); rebuildNav()
     }
 
     private fun rebuildNav() {
         nav.removeAllViews()
         sections.forEachIndexed { index, label ->
             val item = TextView(this).apply {
-                text = navLabel(label)
-                textSize = 9f
-                gravity = Gravity.CENTER
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(if (index == 0) cyan else muted)
-                setPadding(2, 8, 2, 8)
-                setOnClickListener { showSection(index) }
+                text = navLabel(label); textSize = 8.5f; gravity = Gravity.CENTER; setTextColor(if (index == active) cyan else muted); setPadding(1, 8, 1, 8)
+                setOnClickListener { performClickMotion(this); showSection(index) }
             }
             nav.addView(item, LinearLayout.LayoutParams(0, -1, 1f))
         }
     }
 
-    private fun navLabel(label: String): String = when (label) {
-        "Market Analysis" -> "MARKET"
-        "Chart Terminal" -> "CHART"
-        else -> label.uppercase()
-    }
+    private fun navLabel(label: String) = when (label) { "Market Analysis" -> "MARKET"; "Chart Terminal" -> "CHART"; else -> label.uppercase() }
 
     private fun showSection(index: Int) {
-        content.removeAllViews()
-        if (index == 0) home() else {
-            addHeader(sections[index])
-            when (index) {
-                1 -> market()
-                2 -> chart()
-                3 -> cex()
-                4 -> history()
-                5 -> profile()
-            }
-        }
-        updateNav(index)
-        content.alpha = 0f
-        content.translationY = 18f
-        content.animate().alpha(1f).translationY(0f).setDuration(300).setInterpolator(DecelerateInterpolator()).start()
+        active = index; content.removeAllViews()
+        if (index == 0) home() else { addHeader(sections[index]); when (index) { 1 -> market(); 2 -> chart(); 3 -> cex(); 4 -> history(); 5 -> profile() } }
+        rebuildNav(); content.alpha = 0f; content.translationY = 16f
+        content.animate().alpha(1f).translationY(0f).setDuration(260).start()
     }
 
     private fun addHeader(title: String) {
-        val header = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(4, 12, 4, 20) }
-        val eyebrow = TextView(this).apply { text = "KITSETUPS"; textSize = 10f; letterSpacing = 0.22f; setTextColor(cyan) }
-        header.addView(eyebrow)
-        val heading = TextView(this).apply { text = title; textSize = 29f; setTypeface(typeface, Typeface.BOLD); setTextColor(this@MainActivity.text); setPadding(0, 7, 0, 0) }
-        header.addView(heading)
-        content.addView(header)
+        val h = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(4, 14, 4, 16) }
+        h.addView(label("KITSETUPS", cyan, 10f, true)); h.addView(label(title, textColor, 28f, true).apply { setPadding(0, 7, 0, 0) }); content.addView(h)
     }
 
-    private fun updateNav(active: Int) {
-        for (i in 0 until nav.childCount) (nav.getChildAt(i) as TextView).setTextColor(if (i == active) cyan else muted)
-    }
+    private fun label(s: String, c: Int, size: Float, bold: Boolean = false) = TextView(this).apply { text = s; textSize = size; setTextColor(c); if (bold) setTypeface(typeface, 1); letterSpacing = if (size <= 10f) .16f else 0f }
 
     private fun home() {
-        val top = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(4, 18, 4, 12) }
-        val brand = TextView(this).apply {
-            text = "KITSETUPS"
-            textSize = 11f
-            letterSpacing = 0.25f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(cyan)
+        content.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(4, 18, 4, 10)
+            addView(label("KITSETUPS", cyan, 11f, true))
+            addView(label("Trade the move.\nSee the market.", textColor, 34f, true).apply { setPadding(0, 9, 0, 0) })
+            addView(label("A native trading cockpit for analysis, execution and review.", muted, 13f).apply { setPadding(0, 8, 0, 0) })
+        })
+        val hero = panel(); hero.setPadding(20, 18, 20, 18)
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        row.addView(label("MARKET PULSE", muted, 9f, true), LinearLayout.LayoutParams(0, -2, 1f)); row.addView(label("● LIVE", cyan, 9f, true)); hero.addView(row)
+        hero.addView(label("BTC  ${money(btc)}", textColor, 29f, true).apply { setPadding(0, 13, 0, 0) })
+        hero.addView(label("+2.84%     BTC / USDT", green, 12f).apply { setPadding(0, 4, 0, 0) })
+        hero.addView(SparklineView(this), LinearLayout.LayoutParams(-1, 70).apply { topMargin = 10 })
+        content.addView(hero, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 16 })
+        sectionLabel("MARKETS"); marketStrip(); sectionLabel("COMMAND CENTER"); actionGrid(); sectionLabel("PORTFOLIO")
+        addPanel("Portfolio cockpit", "Balances, positions and P&L in one view. Connect your account when you're ready.", "READY")
+    }
+
+    private fun marketStrip() {
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        listOf("BTC" to money(btc), "ETH" to money(eth), "SOL" to money(sol)).forEachIndexed { i, p ->
+            val card = panel(); card.setPadding(14, 13, 14, 13); card.addView(label(p.first, muted, 9f, true)); card.addView(label(p.second, textColor, 15f, true).apply { setPadding(0, 5, 0, 0) })
+            row.addView(card, LinearLayout.LayoutParams(0, -2, 1f).apply { if (i < 2) rightMargin = 7 })
         }
-        top.addView(brand)
-        val greeting = TextView(this).apply {
-            text = "Your market.\nYour edge."
-            textSize = 34f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(this@MainActivity.text)
-            setPadding(0, 10, 0, 0)
-        }
-        top.addView(greeting)
-        val sub = TextView(this).apply {
-            text = "A live trading cockpit built for decisions, not decoration."
-            textSize = 13f
-            setTextColor(muted)
-            setPadding(0, 8, 0, 0)
-        }
-        top.addView(sub)
-        content.addView(top)
-
-        val pulse = addHeroPanel()
-        pulse.postDelayed({ animatePulse(pulse) }, 350)
-
-        addSectionLabel("MARKETS")
-        addMarketStrip()
-        addSectionLabel("COMMAND CENTER")
-        addActionGrid()
-        addSectionLabel("YOUR FLOW")
-        addPanel("Portfolio", "Connect a wallet or CEX to bring balances, positions and P&L into one view.", "READY")
+        content.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 15 })
     }
 
-    private fun addHeroPanel(): View {
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(20, 20, 20, 20)
-            setBackgroundResource(com.kitagent.android.R.drawable.bg_panel)
-            layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 18 }
-        }
-        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val label = TextView(this).apply { text = "MARKET PULSE"; textSize = 10f; letterSpacing = 0.16f; setTypeface(typeface, Typeface.BOLD); setTextColor(muted) }
-        row.addView(label, LinearLayout.LayoutParams(0, -2, 1f))
-        val live = TextView(this).apply { text = "● LIVE"; textSize = 10f; setTypeface(typeface, Typeface.BOLD); setTextColor(cyan) }
-        row.addView(live)
-        card.addView(row)
-        val value = TextView(this).apply { text = "BTC  $104,820"; textSize = 28f; setTypeface(typeface, Typeface.BOLD); setTextColor(this@MainActivity.text); setPadding(0, 14, 0, 0) }
-        card.addView(value)
-        val change = TextView(this).apply { text = "+2.84%     BTC / USDT"; textSize = 12f; setTextColor(cyan); setPadding(0, 5, 0, 0) }
-        card.addView(change)
-        return card
+    private fun actionGrid() {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val a = LinearLayout(this); addAction(a, "MARKET", "Scan setups") { showSection(1) }; addAction(a, "CHART", "Open terminal") { showSection(2) }; box.addView(a)
+        val b = LinearLayout(this).apply { setPadding(0, 8, 0, 0) }; addAction(b, "CEX", "Trade & connect") { showSection(3) }; addAction(b, "HISTORY", "Review flow") { showSection(4) }; box.addView(b); content.addView(box)
     }
 
-    private fun animatePulse(view: View) {
-        val pulse = ObjectAnimator.ofFloat(view, View.ALPHA, 0.72f, 1f)
-        pulse.duration = 1100
-        pulse.repeatMode = ObjectAnimator.REVERSE
-        pulse.repeatCount = ObjectAnimator.INFINITE
-        pulse.start()
+    private fun addAction(row: LinearLayout, title: String, body: String, click: () -> Unit) {
+        val v = panel(); v.setPadding(15, 15, 15, 15)
+        v.setOnClickListener { v.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); v.animate().scaleX(.97f).scaleY(.97f).setDuration(70).withEndAction { v.animate().scaleX(1f).scaleY(1f).setDuration(130).start(); click() }.start() }
+        v.addView(label(title, cyan, 9f, true)); v.addView(label(body, textColor, 13f, true).apply { setPadding(0, 7, 0, 0) })
+        row.addView(v, LinearLayout.LayoutParams(0, -2, 1f).apply { if (row.childCount > 0) rightMargin = 8 })
     }
 
-    private fun addSectionLabel(label: String) {
-        val v = TextView(this).apply { text = label; textSize = 9f; letterSpacing = 0.18f; setTypeface(typeface, Typeface.BOLD); setTextColor(muted); setPadding(4, 2, 4, 8) }
-        content.addView(v)
+    private fun market() {
+        addPanel("Market overview", "BTC  ${money(btc)}\nETH  ${money(eth)}\nSOL  ${money(sol)}", "LIVE")
+        addPanel("Momentum radar", "Trend: bullish\nVolatility: elevated\nLiquidity: healthy\nWatch BTC structure around current range.", "ANALYSIS")
+        addPanel("Setup scanner", "Breakout • Reclaim • Sweep • Continuation\n\nSignal engine is ready for live market feeds.", "SETUPS")
     }
 
-    private fun addMarketStrip() {
-        val strip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, 16) }
-        listOf("BTC\n104.8K", "ETH\n3.8K", "SOL\n241").forEachIndexed { i, item ->
-            val v = TextView(this).apply { text = item; textSize = 12f; setTextColor(this@MainActivity.text); setTypeface(typeface, Typeface.BOLD); setPadding(14, 14, 14, 14); setBackgroundResource(com.kitagent.android.R.drawable.bg_panel) }
-            strip.addView(v, LinearLayout.LayoutParams(0, -2, 1f).apply { if (i < 2) rightMargin = 7 })
-        }
-        content.addView(strip)
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun chart() {
+        val w = WebView(this); w.setBackgroundColor(bg); w.settings.javaScriptEnabled = true; w.settings.domStorageEnabled = true; w.settings.cacheMode = WebSettings.LOAD_DEFAULT; w.webChromeClient = WebChromeClient()
+        val url = "https://www.tradingview.com/widgetembed/?symbol=BINANCE%3ABTCUSDT&interval=60&theme=dark&style=1&locale=en&hide_top_toolbar=0&hide_legend=0&save_image=0&withdateranges=1&hide_side_toolbar=0"
+        w.loadUrl(url); content.addView(w, LinearLayout.LayoutParams(-1, 520).apply { bottomMargin = 12 }); addPanel("Terminal", "BTC/USDT • 1H\nTradingView chart surface with native Android controls around it.", "CHART")
     }
 
-    private fun addActionGrid() {
-        val actions = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 10 } }
-        val row1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        addAction(row1, "MARKET", "Scan setups")
-        addAction(row1, "CHART", "Open terminal")
-        actions.addView(row1)
-        val row2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, 8, 0, 0) }
-        addAction(row2, "CEX", "Trade & connect")
-        addAction(row2, "HISTORY", "Review flow")
-        actions.addView(row2)
-        content.addView(actions)
+    private fun cex() {
+        addPanel("Exchange connections", "Connect supported CEX accounts through secure API credentials. Secrets are never displayed or logged by this app.", "CEX")
+        addPanel("Execution desk", "Spot • Perpetuals • Orders • Positions\n\nOrder placement will require explicit user confirmation before execution.", "TRADE")
+        addPanel("Risk guard", "Review symbol, side, size, leverage and estimated fees before submitting an order.", "SAFETY")
     }
 
-    private fun addAction(row: LinearLayout, title: String, body: String) {
-        val v = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(15, 15, 15, 15)
-            setBackgroundResource(com.kitagent.android.R.drawable.bg_panel)
-            setOnClickListener { performClickMotion(this) }
-        }
-        val t = TextView(this).apply { text = title; textSize = 9f; letterSpacing = 0.14f; setTypeface(typeface, Typeface.BOLD); setTextColor(cyan) }
-        val b = TextView(this).apply { text = body; textSize = 13f; setTypeface(typeface, Typeface.BOLD); setTextColor(this@MainActivity.text); setPadding(0, 7, 0, 0) }
-        v.addView(t); v.addView(b)
-        row.addView(v, LinearLayout.LayoutParams(0, -2, 1f).apply { if (row.childCount == 1) rightMargin = 8 })
+    private fun history() {
+        addPanel("Activity", "Your completed trades, transfers and swaps will appear here.", "HISTORY")
+        addPanel("Performance", "Win rate • P&L • Fees • Volume\n\nPerformance analytics will be calculated from locally cached execution records.", "STATS")
     }
 
-    private fun performClickMotion(view: View) {
-        view.animate().scaleX(0.97f).scaleY(0.97f).setDuration(80).withEndAction {
-            view.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
-        }.start()
+    private fun profile() {
+        addPanel("Account", "Sign-in/session integration is isolated to this native Android repo. No credentials are shared with the web shell.", "ACCOUNT")
+        addPanel("Security", "Biometric lock • Session controls • Secure storage\n\nWallet keys and exchange secrets must remain in Android secure storage and are never hardcoded.", "SECURITY")
+        addPanel("About KitSetups", "Native Android trading terminal\nVersion 1.0.0", "APP")
     }
 
-    private fun market() { addPanel("Market overview", "BTC / ETH / SOL\nLive market data will populate this terminal.", "MARKET"); addPanel("Analysis", "Market structure\nKey levels\nTrend context\nSetup analysis", "ANALYSIS") }
-    private fun chart() { addPanel("Chart Terminal", "Native Android terminal surface reserved for the chart engine.\n\nTradingView integration will be wired here without wrapping the web app.", "CHART"); addPanel("Terminal controls", "Symbol    •    Timeframe    •    Indicators    •    Drawing tools", "TOOLS") }
-    private fun cex() { addPanel("CEX connections", "Connect supported exchanges and manage trading connections securely.", "CONNECTIONS"); addPanel("Orders", "Open orders, positions and account activity will appear here.", "ORDERS") }
-    private fun history() { addPanel("Transaction history", "Transfers, swaps and trading activity will be listed here.", "HISTORY"); addPanel("Trade activity", "Execution records and completed orders will appear here.", "TRADES") }
-    private fun profile() { addPanel("Account", "Authentication and account settings will live here.", "ACCOUNT"); addPanel("Security", "Secure session, wallet and device settings.", "SECURITY") }
+    private fun sectionLabel(s: String) { content.addView(label(s, muted, 9f, true).apply { setPadding(4, 2, 4, 8) }) }
+    private fun addPanel(title: String, body: String, tag: String) { val c = panel(); c.setPadding(18, 16, 18, 18); c.addView(label(tag, cyan, 9f, true)); c.addView(label(title, textColor, 17f, true).apply { setPadding(0, 7, 0, 0) }); c.addView(label(body, muted, 13f).apply { setPadding(0, 7, 0, 0); setLineSpacing(3f, 1f) }); content.addView(c, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12 }) }
+    private fun panel() = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(panelColor); setPadding(18, 16, 18, 16); background = android.graphics.drawable.GradientDrawable().apply { setColor(panelColor); cornerRadius = 18f; setStroke(1, Color.rgb(23, 36, 43)) } }
 
-    private fun addPanel(title: String, body: String, tag: String) {
-        val card = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(18, 16, 18, 18); setBackgroundResource(com.kitagent.android.R.drawable.bg_panel); layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12 } }
-        val tagView = TextView(this).apply { text = tag; textSize = 9f; letterSpacing = 0.16f; setTypeface(typeface, Typeface.BOLD); setTextColor(cyan) }
-        card.addView(tagView)
-        val titleView = TextView(this).apply { text = title; textSize = 16f; setTypeface(typeface, Typeface.BOLD); setTextColor(this@MainActivity.text); setPadding(0, 8, 0, 0) }
-        card.addView(titleView)
-        val bodyView = TextView(this).apply { text = body; textSize = 13f; setTextColor(muted); setLineSpacing(3f, 1f); setPadding(0, 7, 0, 0) }
-        card.addView(bodyView)
-        content.addView(card)
+    private fun refreshMarket() { scope.launch { val data = withContext(Dispatchers.IO) { fetchPrices() }; if (data != null) { btc = data[0]; eth = data[1]; sol = data[2]; if (active == 0) showSection(0) } } }
+    private fun fetchPrices(): DoubleArray? = try { val symbols = listOf("BTCUSDT", "ETHUSDT", "SOLUSDT"); DoubleArray(3) { i -> val c = URL("https://api.binance.com/api/v3/ticker/price?symbol=${symbols[i]}").openConnection() as HttpURLConnection; c.connectTimeout = 5000; c.readTimeout = 5000; val s = c.inputStream.bufferedReader().use { it.readText() }; Regex("\\\"price\\\":\\\"([0-9.]+)\\\"").find(s)?.groupValues?.get(1)?.toDouble() ?: 0.0 } } catch (_: Exception) { null }
+    private fun money(v: Double) = if (v >= 1000) String.format(Locale.US, "$%,.0f", v) else String.format(Locale.US, "$%.2f", v)
+
+    class SparklineView(c: android.content.Context) : View(c) {
+        private val p = Paint(1).apply { color = Color.rgb(78, 226, 255); style = Paint.Style.STROKE; strokeWidth = 4f; strokeCap = Paint.Cap.ROUND }
+        private val values = floatArrayOf(.52f, .48f, .56f, .51f, .62f, .58f, .66f, .61f, .72f, .68f, .81f, .76f, .90f, .84f, .96f)
+        override fun onDraw(canvas: Canvas) { super.onDraw(canvas); val path = Path(); for (i in values.indices) { val x = i * (width.toFloat() / (values.size - 1)); val y = height * .9f - values[i] * height * .72f; if (i == 0) path.moveTo(x, y) else path.lineTo(x, y) }; canvas.drawPath(path, p) }
     }
 }
